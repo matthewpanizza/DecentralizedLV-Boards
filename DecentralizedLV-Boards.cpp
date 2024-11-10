@@ -1,14 +1,11 @@
 
 #include "DecentralizedLV-Boards.h"
 #include "Particle.h"
+#include <mcp_can.h>
 
 #if PLATFORM_ID == PLATFORM_PHOTON_PRODUCTION   //If we're not on a photon, assume we're using the MCP2515 library
 
     CANChannel can(CAN_D1_D2);
-
-#else
-
-    #include <mcp_can.h>
 
 #endif
 
@@ -297,12 +294,71 @@ void CamryCluster_CAN::sendCANData(CAN_Controller &controller){
 /////         CAN BUS CONTROLLER SUBMODULE         ///////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/// @brief Converts baud rate from MCP_CAN_RK library macro to true Particle speed
+/// @param baudRate Baud rate in bits per second.
+unsigned long convertBaudRateToParticle(unsigned long baudRate){
+    if(baudRate <= CAN_1000KBPS){   //Check if this is a MCP_CAN_RK baud rate     
+        switch (baudRate){
+        case CAN_1000KBPS:
+            return 1000000;
+        case CAN_500KBPS:
+            return 500000;
+        case CAN_250KBPS:
+            return 250000;
+        case CAN_200KBPS:
+            return 200000;
+        case CAN_125KBPS:
+            return 125000;
+        case CAN_100KBPS:
+            return 100000;
+        case CAN_50KBPS:
+            return 50000;
+        default:
+            return 500000;  //Use 500kbps CAN if using unrecognized macro
+        }
+    }
+    return baudRate;    //If baudRate > CAN_1000KBPS, then assumes we're already in Particle format
+}
+
+/// @brief Converts baud rate from MCP_CAN_RK library macro to true Particle speed
+/// @param baudRate Baud rate in bits per second.
+unsigned long convertBaudRateToMCP(unsigned long baudRate){
+    if(baudRate > CAN_1000KBPS){   //Check if this is a MCP_CAN_RK baud rate     
+        switch (baudRate){
+        case 1000000:
+            return CAN_1000KBPS;
+        case 500000:
+            return CAN_500KBPS;
+        case 250000:
+            return CAN_250KBPS;
+        case 200000:
+            return CAN_200KBPS;
+        case 125000:
+            return CAN_125KBPS;
+        case 100000:
+            return CAN_100KBPS;
+        case 50000:
+            return CAN_50KBPS;
+        default:
+            return CAN_500KBPS;  //Use 500kbps CAN if using unrecognized macro
+        }
+    }
+    return baudRate;            //If baudRate <= CAN_1000KBPS, then assumes we're already in MCP format
+}
+
+//Update function which allows new data values to be passed in all at once
+void LV_CANMessage::update(uint32_t Can_addr, byte data0, byte data1, byte data2, byte data3, byte data4, byte data5, byte data6, byte data7){
+    addr = Can_addr;
+    byte0 = data0; byte1 = data1; byte2 = data2; byte3 = data3; byte4 = data4; byte5 = data5; byte6 = data6; byte7 = data7;
+}
+
 #if PLATFORM_ID == PLATFORM_PHOTON_PRODUCTION   //When running on a board with a photon, use the integrated CAN bus controller
 
 /// @brief Initializes the CAN bus controller on the photon with the specified speed.
 /// @param baudRate Baud rate in bits per second.
 void CAN_Controller::begin(unsigned long baudRate){
-    can.begin(baudRate);
+    currentBaudRate = convertBaudRateToParticle(baudRate);
+    can.begin(currentBaudRate);
 }
 
 /// @brief Adds a filter to the CAN bus receiving function to only allow messages with a specified address.
@@ -319,6 +375,7 @@ bool CAN_Controller::receive(LV_CANMessage &outputMessage){
     CANMessage inputMessage;
     bool receivedMessage = can.receive(inputMessage);
     if(!receivedMessage) return receivedMessage;    //Didn't receive anything from CAN, don't bother processing input message data.
+    if(inputMessage.id == 0) return false;
     outputMessage.addr = inputMessage.id;
     outputMessage.byte0 = inputMessage.data[0];
     outputMessage.byte1 = inputMessage.data[1];
@@ -329,6 +386,21 @@ bool CAN_Controller::receive(LV_CANMessage &outputMessage){
     outputMessage.byte6 = inputMessage.data[6];
     outputMessage.byte7 = inputMessage.data[7];
     return true;
+}
+
+/// @brief Checks if a message was received on CAN bus and populates the LV_CANMessage with the received data. Do 'LV_CANMessage message;' then 'controller.receive(message);'.
+/// @param outputMessage CAN bus message that will be returned by the CAN controller (returns reference). 
+/// @return Boolean indicating whether or not a message was received from the CAN bus
+void CAN_Controller::changeCANSpeed(uint32_t newCanSpeed){
+    can.end();
+    currentBaudRate = convertBaudRateToMCP(newCanSpeed);
+    can.begin(currentBaudRate);
+}
+
+/// @brief Returns the current baud rate of the CAN controller
+/// @return The current baud rate in bps. 
+uint32_t CAN_Controller::CurrentBaudRate(){
+    return currentBaudRate;
 }
 
 /// @brief [Internal Function] Manually sends a CAN bus packet using the CAN bus controller on the address specified with the inputted data. Example: 'CANSend(0x100, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08);' transmits on address 0x100 with the data [1,2,3,4,5,6,7,8]
@@ -357,14 +429,44 @@ void CAN_Controller::CANSend(uint16_t Can_addr, byte data0, byte data1, byte dat
     can.transmit(txMessage);
 }
 
+/// @brief [Internal Function] Manually sends a CAN bus packet using the CAN bus controller on the address specified with the inputted data. Example: 'CANSend(0x100, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08);' transmits on address 0x100 with the data [1,2,3,4,5,6,7,8]
+/// @param Can_addr CAN Bus address to transmit on
+/// @param data0 CAN Bus Data 0 field (8 bits)
+/// @param data1 CAN Bus Data 1 field (8 bits)
+/// @param data2 CAN Bus Data 2 field (8 bits)
+/// @param data3 CAN Bus Data 3 field (8 bits)
+/// @param data4 CAN Bus Data 4 field (8 bits)
+/// @param data5 CAN Bus Data 5 field (8 bits)
+/// @param data6 CAN Bus Data 6 field (8 bits)
+/// @param data7 CAN Bus Data 7 field (8 bits)
+void CAN_Controller::CANSend(LV_CANMessage inputMessage){
+    CANMessage txMessage;
+    txMessage.id = inputMessage.addr;
+    txMessage.len = 8;
+    txMessage.data[0] = inputMessage.byte0;
+    txMessage.data[1] = inputMessage.byte1;
+    txMessage.data[2] = inputMessage.byte2;
+    txMessage.data[3] = inputMessage.byte3;
+    txMessage.data[4] = inputMessage.byte4;
+    txMessage.data[5] = inputMessage.byte5;
+    txMessage.data[6] = inputMessage.byte6;
+    txMessage.data[7] = inputMessage.byte7;
+    
+    can.transmit(txMessage);
+}
+
 #else
 
 /// @brief Initializes the MCP2515 CAN bus controller on the P2/other with the specified speed and chip select pin.
 /// @param baudRate Baud rate in bits per second.
 void CAN_Controller::begin(unsigned long baudRate, uint8_t chipSelectPin){
+    csPin = chipSelectPin;
+    currentBaudRate = convertBaudRateToMCP(baudRate);
     CAN0 = new MCP_CAN(chipSelectPin);
-    CAN0->begin(MCP_STDEXT, baudRate, MCP_8MHZ);
+    Serial.printlnf("Begin at %d", currentBaudRate);
+    CAN0->begin(MCP_STDEXT, currentBaudRate, MCP_8MHZ);
     CAN0->setMode(MCP_NORMAL);
+    SPI.setClockSpeed(8000000);
     filterIndex = 0;
 }
 
@@ -388,10 +490,11 @@ void CAN_Controller::addFilter(uint32_t address){
 bool CAN_Controller::receive(LV_CANMessage &outputMessage){
     bool receivedMessage = CAN0->checkReceive();
     if(!receivedMessage) return receivedMessage;
-    uint32_t rxId;
+    uint32_t rxId = 0;
     unsigned char len = 0;
     unsigned char rxBuf[8];
     CAN0->readMsgBuf(&rxId, &len, rxBuf);
+    if(rxId == 0) return false;
     outputMessage.addr = rxId;
     outputMessage.byte0 = rxBuf[0];
     outputMessage.byte1 = rxBuf[1];
@@ -402,6 +505,19 @@ bool CAN_Controller::receive(LV_CANMessage &outputMessage){
     outputMessage.byte6 = rxBuf[6];
     outputMessage.byte7 = rxBuf[7];
     return true;
+}
+
+/// @brief Reinitializes the CAN controller with a new CAN Bus baud rate.
+/// @param newCanSpeed New CAN Bus speed in bps. 
+void CAN_Controller::changeCANSpeed(uint32_t newCanSpeed){
+    currentBaudRate = convertBaudRateToMCP(newCanSpeed);
+    CAN0->begin(MCP_STDEXT, currentBaudRate, csPin);
+}
+
+/// @brief Returns the current baud rate of the CAN controller
+/// @return The current baud rate in bps. 
+uint32_t CAN_Controller::CurrentBaudRate(){
+    return currentBaudRate;
 }
 
 /// @brief [Internal Function] Manually sends a CAN bus packet using the CAN bus controller on the address specified with the inputted data. Example: 'CANSend(0x100, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08);' transmits on address 0x100 with the data [1,2,3,4,5,6,7,8]
@@ -416,7 +532,15 @@ bool CAN_Controller::receive(LV_CANMessage &outputMessage){
 /// @param data7 CAN Bus Data 7 field (8 bits)
 void CAN_Controller::CANSend(uint16_t Can_addr, byte data0, byte data1, byte data2, byte data3, byte data4, byte data5, byte data6, byte data7){    //Implementation of CANSend on boards 
     byte data[8] = {data0, data1, data2, data3, data4, data5, data6, data7};
-    byte sndStat = CAN0->sendMsgBuf(Can_addr, 0, 8, data);
+    CAN0->sendMsgBuf(Can_addr, 0, 8, data);
+}
+
+/// @brief [Internal Function] Manually sends a CAN bus packet using the CAN bus controller on the address specified with the inputted data. Example: 'CANSend(0x100, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08);' transmits on address 0x100 with the data [1,2,3,4,5,6,7,8]
+/// @param Can_addr CAN Bus address to transmit on
+/// @param inMsg CAN Bus message class
+void CAN_Controller::CANSend(LV_CANMessage inMsg){    //Implementation of CANSend on boards 
+    byte data[8] = {inMsg.byte0, inMsg.byte1, inMsg.byte2, inMsg.byte3, inMsg.byte4, inMsg.byte5, inMsg.byte6, inMsg.byte7};
+    CAN0->sendMsgBuf(inMsg.addr, 0, 8, data);
 }
 
 #endif

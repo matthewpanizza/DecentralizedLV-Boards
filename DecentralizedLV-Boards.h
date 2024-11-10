@@ -2,10 +2,7 @@
 #define DECENTRALIZED_LV_BOARDS_H
 
 #include "Particle.h"
-
-#if PLATFORM_ID != PLATFORM_PHOTON_PRODUCTION   //If we're not on a photon, assume we're using the MCP2515 library
-    #include <mcp_can.h>
-#endif
+#include <mcp_can.h>
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // MACROS FOR SYSTEM OPERATION
@@ -116,7 +113,11 @@ class LV_CANMessage{
   uint8_t byte5 = 0;
   uint8_t byte6 = 0;
   uint8_t byte7 = 0;
+  void update(uint32_t Can_addr, byte data0, byte data1, byte data2, byte data3, byte data4, byte data5, byte data6, byte data7);
 };
+
+unsigned long convertBaudRateToParticle(unsigned long baudRate);
+unsigned long convertBaudRateToMCP(unsigned long baudRate);
 
 /// @brief Class to handle CAN bus controllers (either onboard on Photon or using the MCP2515 on P2/other microcontrollers).
 class CAN_Controller{
@@ -124,6 +125,9 @@ class CAN_Controller{
     void addFilter(uint32_t address);
     bool receive(LV_CANMessage &outputMessage);
     void CANSend(uint16_t Can_addr, byte data0, byte data1, byte data2, byte data3, byte data4, byte data5, byte data6, byte data7);
+    void CANSend(LV_CANMessage inputMessage);
+    void changeCANSpeed(uint32_t newCanSpeed);
+    uint32_t CurrentBaudRate();
     #if PLATFORM_ID == PLATFORM_PHOTON_PRODUCTION   //When running on a board with a photon, we'll use the internal controller, no need to specify chip select pin
     void begin(unsigned long baudRate);
     #else                                           //When running on a P2 or other, we need the MCP2515, which has a chip select pin you must specify.
@@ -132,6 +136,8 @@ class CAN_Controller{
     private:
     MCP_CAN *CAN0;
     uint8_t filterIndex;
+    uint8_t csPin;
+    uint32_t currentBaudRate;
 };
 
 /// @brief Class to send data from Dash Controller OR to receive CAN data from the Dash Controller on other boards.
