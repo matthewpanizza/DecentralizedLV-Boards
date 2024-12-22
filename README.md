@@ -115,7 +115,7 @@ canControllerA.CANSend(lv_message); // Send out message on address 0x100 with da
 
 lv_message.address = 0x200;         //Change the address to 0x200 for CAN Bus B
 
-canControllerB.CANSend(lv_message); // Send out message on address 0x100 with data 0x55 0x00 0x00 0x00 0x00 0x00 0x00 0x00 on CAN Bus B
+canControllerB.CANSend(lv_message); // Send out message on address 0x200 with data 0x55 0x00 0x00 0x00 0x00 0x00 0x00 0x00 on CAN Bus B
 ```
 
 ## Board-Specific Classes
