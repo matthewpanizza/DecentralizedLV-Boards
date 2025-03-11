@@ -195,6 +195,7 @@ void LPDRV_RearLeft_CAN::receiveCANData(LV_CANMessage msg){
 /// @brief Initializes the control fields of the cluster to a default value. Must call sendCANData for the cluster to actually update.
 void CamryCluster_CAN::initialize(){
     brakeIcon = false;
+    parkingBrakeCircle = false;
     seatBeltIcon = false;
     checkEngineOn = false;
     clusterBacklight = true;
@@ -213,9 +214,11 @@ void CamryCluster_CAN::initialize(){
     animateStartup = false;
     LCD_EngineStoppedCode = LCD_ENGINE_NORMAL;
     LCD_CheckEnginePrompt = LCD_CHECK_ENGINE_NONE;
+    LCD_ParkingBrakePrompt = LCD_PBRK_GOOD;
     rpmGauge = 0;
     speedGauge = 0;
     ecoGauge = 0x3C;
+    ecoLeaf = false;
     fogLightOrange = false;
     fogLightGreen = false;
     headlight = false;
@@ -227,23 +230,51 @@ void CamryCluster_CAN::initialize(){
     sportMode = false;
     ecoMode = false;
     readyToDrive = false;
+    timer25ms = 0;
+    timer250ms = 0;
+    timer1000ms = 0;
+    crashBrakePrompt = 0;
+    clusterBeeps = BEEP_RATE_OFF;
+    hudBlueLeftLane = false;
+    hudBlueRightLane = false;
+    hudLeftLaneColor = HUD_LANE_OFF;
+    hudRightLaneColor = HUD_LANE_OFF;
+    LCD_TakeBreak_Prompt = LCD_TAKE_BREAK_NONE;
 }
 
-/// @brief Taskes the locally populated fields and generates the CAN bus frames needed to spoof the Camry Cluster components.
-/// @param controller The CAN bus controller attached to this microcontroller.
-void CamryCluster_CAN::sendCANData(CAN_Controller &controller){
-    //SEE THIS SHEET FOR HOW THE SPOOF WORKS: https://docs.google.com/spreadsheets/d/1bL61UoguuONFQnytRpy7xj2nyJdYXmgT9HQCQns6Ij0/edit?usp=sharing
-    uint8_t lowACC = 0;                                         //Default to not a low accessory battery
-    if(chargingSystemMalfunction) lowACC = 0x04;                //If ACC battery is low, display prompt on LCD
-    else if(oilPressureLow) lowACC = 0x03;                      //Show oil pressure low if battery is OK
+void CamryCluster_CAN::send25msPackets(CAN_Controller &controller){
+    
+
+    //Periodically send out the rest of the 1000ms packets if no changes in value have occurred.
+    if(millis() - timer25ms < 25) return;       //If we haven't hit 25ms yet, don't send the packets
+    timer25ms = millis();                       //Reset the timer
+
+    uint16_t speedMask = speedGauge * 160;
+
+    static uint16_t speedFakeTimer = 0;
+    static bool everyOther = false;
+
+    if(everyOther){
+        speedFakeTimer += speedGauge * 0.56;   //33 = ~1 mile per minute (60mph)
+        everyOther = false;
+    }
+    else{
+        everyOther = true;
+    } 
+
+    uint8_t economyBitmask = (uint8_t)((ecoGauge * 0x3C) / 100) & 0x3C;    //Calculate the economy bitmask based on the percentage of bars
+    economyBitmask = ecoLeaf ? economyBitmask + 0xC0 : economyBitmask;          //Eco leaf sets upper two bits
+
+    controller.CANSend(PARKING_BRAKE_CAN_ADDR, 0x88, parkingBrakeCircle ? 0x02 : 0x00, LCD_ParkingBrakePrompt, 0, 0, 0, 0, 0xC7);
+    controller.CANSend(SPEED_CAN_ADDR, 0, 0, 0, 0, speedFakeTimer & 255, speedMask >> 8, speedMask & 255, 0xBC);                           //Spoof for speedometer
+    if(driveMode != DRIVE_MODE_PARK) controller.CANSend(FUEL_ECONOMY_CAN_ADDR, 0, 0, 0, 0, 0, 1, economyBitmask, 0);                 //Spoof for fuel economy meter
+    //Update the last values for the next time we send out the 25ms packets
+    
+}
+
+void CamryCluster_CAN::send250msPackets(CAN_Controller &controller){
 
     uint8_t powerSteerState = powerSteeringIcon ? 0x38:0x00;    //Clear steering wheel icon if no power steering error
-
-    uint8_t engineFault = checkEngineOn ? 0x00:0x40;                  //0x40 turns off check engine light from instrument cluster
-    if(!clusterBacklight) engineFault = checkEngineOn ? 0xB0:0xC0;    //Turn off backlight if needed
-
-    uint8_t dashAnimationMask = animateStartup ? 0x00:0x40;
-    dashAnimationMask += trunkOpen + (rearLeftDoor << 2) + (rearRightDoor << 3) + (frontRightDoor << 4) + (frontLeftDoor << 5);
 
     uint8_t otherGear = 0;                                      //Variable to check if in neutral or reverse, default to no gear
     switch (driveMode){
@@ -267,27 +298,121 @@ void CamryCluster_CAN::sendCANData(CAN_Controller &controller){
     uint8_t driveModifier = 0;                                  //Default normal drive mode (not eco or sport)      
     if(sportMode) driveModifier = 0x10;                         //If bit 1 is set, then we are in sport mode (0x10 to instrument cluster signals sport)
     if(ecoMode) driveModifier = 0x30;                           //If bit 2 is set, then we are in eco mode (0x30 to instrument cluster signals eco)
-    
-    controller.CANSend(ABS_CAN_ADDR, (brakeIcon ? 0x40:0x00), 0, 0, 0, 0, 0, 0, 0);                         //Spoof Anti-Lock brakes (All 0's clears errors)
-    controller.CANSend(AIRBAG_CAN_ADDR, 0, 0, 0, (seatBeltIcon ? 0x05:0x00), 0, 0, 0, 0);                   //Spoof SRS Airbag system (All 0's clears errors)
-    controller.CANSend(ENGINE_CONTROL_CAN_ADDR, engineFault,lowACC,(motorTempDegC*1.59)+65,0,0,0,0,0);      //Spoof for engine controller. Takes a flag that sets check engine, alternator failure and motor temperature
-    controller.CANSend(POWER_STEER_CAN_ADDR_1, 0, powerSteerState, powerSteeringPrompt, 0, 0, 0, 0, 0);     //Spoof for Power Steering, byte 1 controls steering wheel icon on cluster
-    controller.CANSend(POWER_STEER_CAN_ADDR_2, 0, 0, 0, 0, 0, 0, 0, 0);
-    controller.CANSend(POWER_STEER_CAN_ADDR_3, 0, 0, 0, 0, 0, 0, 0, 0);
-    controller.CANSend(LANE_DEPART_CAN_ADDR, 0, 0, 0, 0, 0, 0, 0, 0);                                       //Lane departure spoof
-    controller.CANSend(PRECOLLISION_CAN_ADDR, 0, 0, 0, 0, 0, 0, 0, 0);                                      //Precollision spoof
-    controller.CANSend(PARKING_CAN_ADDR, 1, 1, 1, 1, 0, 0, 0, 0);                                           //Parking sonar spoof
-    controller.CANSend(SMART_KEY_CAN_ADDR, 0x81, 0, 0, 0, 0, 0, LCD_PowerPrompt, LCD_PowerPrompt ? 0x0D:0); //Smart Key and Push to Start instructions
-    controller.CANSend(ANIMATIONS_CAN_ADDR, 0x10, 0, 0, 0, LCD_Brightness, dashAnimationMask, 0x08, seatBeltIcon ? 0x50:0x00);    //Spoof for instrument cluster animations and backlight dimming
+
+    //Allow for instant update if values have changed for the BRAKE icon
+    static bool lastBrakeIcon;
+    if(brakeIcon != lastBrakeIcon){
+        controller.CANSend(ABS_CAN_ADDR, (brakeIcon ? 0x40:0x00), 0, 0, 0, 0, 0, 0, 0);                         //Spoof Anti-Lock brakes (All 0's clears errors)
+        lastBrakeIcon = brakeIcon;
+    }
+
+
+    //Periodically send out the rest of the 1000ms packets if no changes in value have occurred.
+    if(millis() - timer250ms < 250) return;     //If we haven't hit 250ms yet, don't send the packets
+    timer250ms = millis();                      //Reset the timer
+
+    controller.CANSend(ABS_CAN_ADDR, (brakeIcon ? 0x40:0x00), 0, 0, 0, 0, 0, 0, 0x08);                         //Spoof Anti-Lock brakes (All 0's clears errors)
+    controller.CANSend(POWER_STEER_CAN_ADDR, 0, powerSteerState, powerSteeringPrompt, 0, 0, 0, 0, 0);     //Spoof for Power Steering, byte 1 controls steering wheel icon on cluster
+    controller.CANSend(PARK_ASSIST_CAN_ADDR, 0, 0, 0, 0, 0, 0, 0, 0);
     controller.CANSend(MOTOR_SPOOF_CAN_ADDR, 0, 0, 0, 0, 0, 0, rpmGauge/200, rpmGauge%200);                 //Motor spoof for RPM dial
     controller.CANSend(TRANSMISSION_CAN_ADDR, 0, otherGear, 0, 0, (gearNumber << 4), driveSet, 0, driveModifier);           //Transmission controller spoof, sets drive gear and sport/eco/normal modes
-    controller.CANSend(ENGINE_PROMPTS_CAN_ADDR, 0, 0 , 0, 0, 0, 0, LCD_EngineStoppedCode, LCD_CheckEnginePrompt);
-    if(driveMode != DRIVE_MODE_PARK) controller.CANSend(FUEL_ECONOMY_CAN_ADDR, 0, 0, 0, 0, 0, 1, 0, 0);                 //Spoof for fuel economy meter
-    if(headlight != last_headlight || highbeam != last_highbeam){       //This CAN id only needs to get sent if the value has changed
+
+    //Update the last values for the next time we send out the 250ms packets
+    lastBrakeIcon = brakeIcon;
+}
+
+void CamryCluster_CAN::send1000msPackets(CAN_Controller &controller){
+    
+    //Calculations for CAN Bus values based on the flags in the class
+    uint8_t lowACC = 0;                                         //Default to not a low accessory battery
+    if(chargingSystemMalfunction) lowACC = 0x04;                //If ACC battery is low, display prompt on LCD
+    else if(oilPressureLow) lowACC = 0x03;                      //Show oil pressure low if battery is OK
+
+    uint8_t engineFault = checkEngineOn ? 0x00:0x40;                  //0x40 turns off check engine light from instrument cluster
+    if(!clusterBacklight) engineFault = checkEngineOn ? 0xB0:0xC0;    //Turn off backlight if needed
+
+    uint8_t dashAnimationMask = animateStartup ? 0x00:0x40;
+    dashAnimationMask += trunkOpen + (rearLeftDoor << 2) + (rearRightDoor << 3) + (frontRightDoor << 4) + (frontLeftDoor << 5);
+
+    uint8_t precollisionMask = crashBrakePrompt ? 0x10 : 0x00;
+
+    uint8_t hudLaneMask = hudBlueLeftLane + (hudBlueRightLane << 1) + ((hudLeftLaneColor && 0x3) << 2) + ((hudRightLaneColor && 0x3) << 4);
+
+    //Allow for instant update if values have changed for the headlight or highbeam
+    if(headlight != last_headlight || highbeam != last_highbeam){
         controller.CANSend(LIGHTING_CAN_ADDR, 0x12, 0, 0xE8,(headlight << 5) + (highbeam << 6), 0, 0, 0, 0); //Send out spoof for headlights/high beam system when headlight switches have changed
         last_headlight = headlight;
         last_highbeam = highbeam;
     }
+
+    //Allow for instant update if values have changed for the seatbelt icon
+    static bool lastSeatBeltIcon;
+    if(lastSeatBeltIcon != seatBeltIcon){
+        controller.CANSend(AIRBAG_CAN_ADDR, 0, 0, 0, (seatBeltIcon ? 0x05:0x00), 0, 0, 0, 0);                   //Spoof SRS Airbag system (All 0's clears errors)
+        lastSeatBeltIcon = seatBeltIcon;
+    }
+
+    static uint8_t lastEngineFault;
+    static uint8_t lastLowACC;
+    static uint16_t lastMotorTemp;
+    if(lastEngineFault != engineFault || lastLowACC != lowACC || lastMotorTemp != motorTempDegC){
+        controller.CANSend(ENGINE_CONTROL_CAN_ADDR, engineFault,lowACC,(motorTempDegC*1.59)+65,0,0,0,0,0);      //Spoof for engine controller. Takes a flag that sets check engine, alternator failure and motor temperature
+        lastEngineFault = engineFault;
+        lastLowACC = lowACC;
+        lastMotorTemp = motorTempDegC;
+    }
+
+    static uint8_t lastEngineStoppedCode;
+    static uint8_t lastCheckEnginePrompt;
+    if(lastEngineStoppedCode != LCD_EngineStoppedCode || lastCheckEnginePrompt != LCD_CheckEnginePrompt){
+        controller.CANSend(ENGINE_PROMPTS_CAN_ADDR, 0, 0 , 0, 0, 0, 0, LCD_EngineStoppedCode, LCD_CheckEnginePrompt);
+        lastEngineStoppedCode = LCD_EngineStoppedCode;
+        lastCheckEnginePrompt = LCD_CheckEnginePrompt;
+    }
+    
+    //Sort-of approximation for temperature. Gets within +/- 1 degree on display.
+    float tempC = ((double)(outsideTemperatureF - 32) * 5.0) / 9.0;
+    float temperatureMaskUpper;
+    float temperatureMaskLower = std::modf(tempC, &temperatureMaskUpper);
+    temperatureMaskLower = temperatureMaskLower * 100;
+    temperatureMaskUpper += 48;
+
+
+    //Periodically send out the rest of the 1000ms packets if no changes in value have occurred.
+    if(millis() - timer1000ms < 1000) return;   //If we haven't hit 1000ms yet, don't send the packets
+    timer1000ms = millis();                     //Reset the timer
+
+    controller.CANSend(AIRBAG_CAN_ADDR, 0, 0, 0, (seatBeltIcon ? 0x05:0x00), 0, 0x08, 0, 0xC5);             //Spoof SRS Airbag system (All 0's clears errors)
+    controller.CANSend(LANE_DEPART_CAN_ADDR, hudLaneMask, 0, 0, 0, 0, 0, LCD_TakeBreak_Prompt, 10);          //Lane departure spoof
+    controller.CANSend(PRECOLLISION_CAN_ADDR, precollisionMask, 0, 0, clusterBeeps, 0, 0, 0, 0);            //Precollision spoof
+    controller.CANSend(PARKING_CAN_ADDR, 1, 1, 1, 1, 0, 0, 0, 0);                                           //Parking sonar spoof
+    controller.CANSend(LIGHTING_CAN_ADDR, 0x12, 0, 0xE8,(headlight << 5) + (highbeam << 6), 0, 0, 0, 0);    //Send out spoof for headlights/high beam system when headlight switches have changed
+    controller.CANSend(ENGINE_CONTROL_CAN_ADDR, engineFault,lowACC,(motorTempDegC*1.59)+65,0,0,0,0,0);      //Spoof for engine controller. Takes a flag that sets check engine, alternator failure and motor temperature
+    controller.CANSend(SMART_KEY_CAN_ADDR, 0x81, 0, 0, 0, 0, 0, LCD_PowerPrompt, LCD_PowerPrompt ? 0x0D:0); //Smart Key and Push to Start instructions
+    controller.CANSend(ANIMATIONS_CAN_ADDR, 0x10, 0, 0, 0, LCD_Brightness, dashAnimationMask, 0x08, seatBeltIcon ? 0x50:0x00);    //Spoof for instrument cluster animations and backlight dimming
+    controller.CANSend(ENGINE_PROMPTS_CAN_ADDR, 0, 0 , 0, 0, 0, 0, LCD_EngineStoppedCode, LCD_CheckEnginePrompt);
+    controller.CANSend(OUTDOOR_TEMP_CAN_ADDR, 0, 0, 0, (uint8_t)temperatureMaskUpper, 0, (uint8_t)temperatureMaskLower, 0, 0);
+
+    //Update the last values for the next time we send out the 1000ms packets
+    last_headlight = headlight;
+    last_highbeam = highbeam;
+    lastEngineFault = engineFault;
+    lastLowACC = lowACC;
+    lastMotorTemp = motorTempDegC;
+    lastEngineStoppedCode = LCD_EngineStoppedCode;
+    lastCheckEnginePrompt = LCD_CheckEnginePrompt;
+
+}
+
+/// @brief Taskes the locally populated fields and generates the CAN bus frames needed to spoof the Camry Cluster components.
+/// @param controller The CAN bus controller attached to this microcontroller.
+void CamryCluster_CAN::sendCANData(CAN_Controller &controller){
+    //SEE THIS SHEET FOR HOW THE SPOOF WORKS: https://docs.google.com/spreadsheets/d/1bL61UoguuONFQnytRpy7xj2nyJdYXmgT9HQCQns6Ij0/edit?usp=sharing
+    
+    send25msPackets(controller);
+    send250msPackets(controller);
+    send1000msPackets(controller);
+
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
