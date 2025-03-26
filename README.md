@@ -272,6 +272,15 @@ Handles data transmission for the spoof of the [Camry Instrument Cluster](https:
 #### CAN Bus Encoding
 There was a LOT of reverse-engineering work done to figure out the (incomplete) CAN Bus structure of the Camry instrument cluster. If you want to see the structure, check out the [CAN Analyzer](https://github.com/matthewpanizza/CANAnalyzer) project which has information about the CAN IDs and their respective data.
 
+
+## High Voltage Boards Translation
+
+Also included in this module are classes to help translate messages from the Orion BMS and RMS Motor Controller. These two pieces of hardware are connected to a high voltage CAN Bus which is separate from the low voltage CAN Bus. Originally, the car's telemetry computer translated some of this data from the HV CAN Bus to the LV CAN Bus. We are now replacing that functionality using the High Voltage Controller, which is connected to both CAN Buses. For each the of the `OrionBMS` and `RMSController` classes, there are three methods:
+
+- `receiveHVCANData()`: Called by the High Voltage Controller to receive messages sent from the HV equipment
+- `sendCANData()`: Called by the High Voltage Controller to send the HV Equipment data to the LV CAN Bus
+- `receiveCANData()`: Called by any board in the DecentralizedLV system to receive HV data from the High Voltage Controller
+
 ## Example Usage
 
 ### Dashboard Controller Transmit Example
