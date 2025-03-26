@@ -134,6 +134,97 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+//Orion BMS Message Forwarding Format for the HV pack statistics. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define ORION_PACK_STAT_ADDR   0x112
+// byte 0: pack current (upper 8 bits) (0.1A increments)
+// byte 1: pack current (lower 8 bits) (0.1A increments)
+// byte 2: pack voltage (upper 8 bits) (0.1V increments)
+// byte 3: pack voltage (lower 8 bits) (0.1V increments)
+// byte 4: pack amp-hours (0.1Ah increments)
+// byte 5: pack resistance (1mOhm increments)
+// byte 6: pack state of charge (0-100%)
+// byte 7: 12V voltage (0.1V increments)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//Orion BMS Message Forwarding Format for cell stats and DTC error codes. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define ORION_DTC_CELLV_ADDR   0x113
+// byte 0: average cell voltage (0.1V increments)
+// byte 1: highest cell voltage (0.1V increments)
+// byte 2: lowest cell voltage (0.1V increments)
+// byte 3: lowest cell resistance (0.1mOhm increments)
+// byte 4: DTC error flags 1 (upper 8 bits)
+// byte 5: DTC error flags 1 (lower 8 bits)
+// byte 6: DTC error flags 2 (upper 8 bits)
+// byte 7: DTC error flags 2 (lower 8 bits)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//Orion BMS Message Forwarding Format for the current limits and cell temperatures. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define ORION_CUR_LMT_TEMP_ADDR   0x114
+// byte 0: discharge current limit (upper 8 bits) (1A increments)
+// byte 1: discharge current limit (lower 8 bits) (1A increments)
+// byte 2: charge current limit (upper 8 bits) (1A increments)
+// byte 3: charge current limit (lower 8 bits) (1A increments)
+// byte 4: BMS average temperature (degrees C)
+// byte 5: BMS internal temperature (degrees C)
+// byte 6: Highest thermistor temp (degrees C)
+// byte 7: Lowest thermistor temp (degrees C)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//Orion BMS Message Forwarding Format for the J1772 charger. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define ORION_J1772_STATS_ADDR   0x115
+// byte 0: J1772 charger connected
+// byte 1: J1772 Charger Current Limit (1V increments)
+// byte 2: J1772 AC Charger Voltage (1V increments)
+// byte 3: 
+// byte 4:
+// byte 5: 
+// byte 6:
+// byte 7:
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//RMS Motor Controller Message Forwarding Format for voltages and currents. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define RMS_POWER_STAT_ADDR   0x116
+// byte 0: 12V accessory Voltage (upper 8 bits) (0.01V increments)
+// byte 1: 12V accessory Voltage (lower 8 bits) (0.01V increments)
+// byte 2: HV Bus Voltage (upper 8 bits) (0.1V increments)
+// byte 3: HV Bus Voltage (lower 8 bits) (0.1V increments)
+// byte 4: HV Bus Current (upper 8 bits) (0.1A increments)
+// byte 5: HV Bus Current (lower 8 bits) (0.1A increments)
+// byte 6: Motor Phase A Current (upper 8 bits) (0.1A increments)
+// byte 7: Motor Phase A Current (lower 8 bits) (0.1A increments)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//RMS Motor Controller Message Forwarding Format for motor RPM, torque and temperature and inverter temperature. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define RMS_MTR_TEMP_ADDR   0x117
+// byte 0: Motor RPM (upper 8 bits) (RPM increments, 1 RPM = 1 increment)
+// byte 1: Motor RPM (lower 8 bits) (RPM increments, 1 RPM = 1 increment)
+// byte 2: Commanded Torque (upper 8 bits) (0.1Nm increments, 1 Nm = 10 increments)
+// byte 3: Commanded Torque (lower 8 bits) (0.1Nm increments, 1 Nm = 10 increments)
+// byte 4: Motor Temperature C (upper 8 bits) (degrees C, signed, 0.1C increments)
+// byte 5: Motor Temperature C (lower 8 bits) (degrees C, signed, 0.1C increments)
+// byte 6: Inverter Temperature C (upper 8 bits) (degrees C, signed, 0.1C increments)
+// byte 7: Inverter Temperature C (lower 8 bits) (degrees C, signed, 0.1C increments)
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//RMS Motor Controller Message Forwarding Format for error codes. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define RMS_POST_FAULTS_ADDR   0x118
+// byte 0: Post Faults (High) (upper 8 bits) (see RMS documentation for fault codes)
+// byte 1: Post Faults (High) (lower 8 bits) (see RMS documentation for fault codes)
+// byte 2: Post Faults (Low) (upper 8 bits) (see RMS documentation for fault codes)
+// byte 3: Post Faults (Low) (lower 8 bits) (see RMS documentation for fault codes)
+// byte 4: Run Faults (High) (upper 8 bits) (see RMS documentation for fault codes)
+// byte 5: Run Faults (High) (lower 8 bits) (see RMS documentation for fault codes) 
+// byte 6: Run Faults (Low) (upper 8 bits) (see RMS documentation for fault codes)
+// byte 7: Run Faults (Low) (lower 8 bits) (see RMS documentation for fault codes) 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 //Power Controller CAN Message Format. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
 #define REAR_LEFT_DRIVER   0x95
 // byte 0: 
