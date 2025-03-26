@@ -225,6 +225,19 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+//HV Controller CAN Message Format. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
+#define HV_CONTROL_ADDR   0x130
+// byte 0: b0: Killswitch b1: BMSFault
+// byte 1: 
+// byte 2: 
+// byte 3: 
+// byte 4:
+// byte 5:
+// byte 6:
+// byte 7: 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 //Power Controller CAN Message Format. UPDATE THIS WHEN YOU ADD FIELDS OR ADDITIONAL CAN DATA!
 #define REAR_LEFT_DRIVER   0x95
 // byte 0: 
@@ -400,6 +413,22 @@ class CamryCluster_CAN{
     void initialize();
     void sendCANData(CAN_Controller &controller);
     //void receiveCANData(LV_CANMessage msg);
+};
+
+/// @brief Class to send data from HV Controller OR to receive CAN data from the HV Controller on other boards.
+class HVController_CAN{
+    public:
+    uint32_t boardAddress;      //The CAN Bus address that this controller runs at, should be defined by HV_CONTROL_ADDR
+    bool Killswitch;                  //Killswitch on the outside of the car
+    bool BMSFault;                    //Indicator for a fault in the BMS
+    bool boardDetected;                    //Flag to ensure we have heard from the board
+
+
+    HVController_CAN(uint32_t boardAddr);
+    void initialize();
+    void sendCANData(CAN_Controller &controller);
+    void receiveCANData(LV_CANMessage msg);
+
 };
 
 #endif

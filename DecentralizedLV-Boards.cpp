@@ -96,6 +96,42 @@ void DashController_CAN::receiveCANData(LV_CANMessage msg){
     }
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////         HIGH VOLTAGE CONTROLLER FUNCTIONS        ///////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/// @brief Creates an instance of the controller to either send or receive CAN frames for this board. Takes agreed upon address for this board. Example: 'PowerController_CAN pc(0x120);' would create a Power Controller that transmits on 0x120.
+/// @param boardAddr The 32-bit CAN Bus address the Power Controller transmits on.
+HVController_CAN::HVController_CAN(uint32_t boardAddr){
+    boardAddress = boardAddr;
+}
+
+
+/// @brief Initializes the control fields of the Power Controller to a default value. 
+void HVController_CAN::initialize(){
+    Killswitch = false;
+    BMSFault = false;
+    boardDetected = false;
+}
+
+/// @brief Takes the variables that you've previously updated and sends them out in the agreed CAN bus format for this board.
+/// @param controller The CAN bus controller attached to this microcontroller.
+void HVController_CAN::sendCANData(CAN_Controller &controller){
+    byte tx0 = Killswitch + (BMSFault << 1);
+    controller.CANSend(boardAddress, tx0, 0, 0, 0, 0, 0, 0, 0);
+
+}
+
+/// @brief Extracts CAN frame data into the object's variables so you can use them for controlling other things
+/// @param msg The CAN frame that was received by can.receive(). Need to convert from CANMessage to LV_CANMessage by copying address and byte.
+void HVController_CAN::receiveCANData(LV_CANMessage msg){
+    if(msg.addr == boardAddress){
+        boardDetected = true;
+        //do something with the hv controller data
+        Killswitch = msg.byte0 & 1;
+        BMSFault = (msg.byte0 >> 1) & 1;
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////         POWER CONTROLLER FUNCTIONS        //////////////////////////////////////////////////////////////
